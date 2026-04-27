@@ -1,0 +1,95 @@
+{
+  "name": "trae-prompt-optimizer",
+  "displayName": "Trae Prompt Optimizer",
+  "description": "Turn rough goals into multi-round plan-mode prompts and Trae-ready execution plans inspired by Harness.",
+  "version": "0.10.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:traePromptOptimizer.openPanel",
+    "onCommand:traePromptOptimizer.optimizeSelection",
+    "onCommand:traePromptOptimizer.setApiKey"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "traePromptOptimizer.openPanel",
+        "title": "Trae Prompt Optimizer: Open"
+      },
+      {
+        "command": "traePromptOptimizer.optimizeSelection",
+        "title": "Trae Prompt Optimizer: Optimize Selection"
+      },
+      {
+        "command": "traePromptOptimizer.setApiKey",
+        "title": "Trae Prompt Optimizer: Set AI API Key"
+      }
+    ],
+    "configuration": {
+      "title": "Trae Prompt Optimizer",
+      "properties": {
+        "traePromptOptimizer.ai.provider": {
+          "type": "string",
+          "default": "openai",
+          "enum": [
+            "openai",
+            "nvidia",
+            "custom"
+          ],
+          "description": "AI provider preset used by the optimizer. NVIDIA uses https://integrate.api.nvidia.com/v1."
+        },
+        "traePromptOptimizer.ai.baseUrl": {
+          "type": "string",
+          "default": "https://api.openai.com/v1",
+          "description": "OpenAI-compatible API base URL, for example https://api.openai.com/v1 or a local/third-party compatible endpoint."
+        },
+        "traePromptOptimizer.ai.model": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "Model name used by the OpenAI-compatible prompt optimization request."
+        },
+        "traePromptOptimizer.ai.systemPrompt": {
+          "type": "string",
+          "default": "You are a senior product-and-engineering prompt coach for Trae users. Turn a rough one-sentence idea into a question-driven landing plan and a Trae-ready execution prompt. Do not merely polish wording. Ask missing questions, make safe temporary assumptions, define the MVP, and write clear acceptance criteria. Return Markdown only and never include API keys, tokens, credentials, or secrets.",
+          "description": "System prompt sent to the optional AI optimizer."
+        },
+        "traePromptOptimizer.traeChatCommand": {
+          "type": "string",
+          "default": "workbench.action.chat.open",
+          "description": "Command ID used to open Trae Chat or a compatible chat panel after copying the optimized prompt."
+        }
+      }
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "traePromptOptimizer.optimizeSelection",
+          "when": "editorHasSelection",
+          "group": "navigation@9"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "traePromptOptimizer.openPanel"
+        },
+        {
+          "command": "traePromptOptimizer.optimizeSelection"
+        },
+        {
+          "command": "traePromptOptimizer.setApiKey"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "lint": "node --check extension.js",
+    "package": "powershell -ExecutionPolicy Bypass -File scripts/package-vsix.ps1"
+  }
+}
