@@ -48,6 +48,41 @@ function getProviderPreset(provider) {
       baseUrl: 'https://integrate.api.nvidia.com/v1',
       model: 'nvidia/llama-3.1-nemotron-nano-8b-v1'
     },
+    deepseek: {
+      label: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      model: 'deepseek-chat'
+    },
+    gemini: {
+      label: 'Gemini OpenAI-compatible',
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+      model: 'gemini-2.0-flash'
+    },
+    kimi: {
+      label: 'Kimi / Moonshot',
+      baseUrl: 'https://api.moonshot.cn/v1',
+      model: 'kimi-k2-0711-preview'
+    },
+    groq: {
+      label: 'Groq',
+      baseUrl: 'https://api.groq.com/openai/v1',
+      model: 'llama-3.3-70b-versatile'
+    },
+    openrouter: {
+      label: 'OpenRouter',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      model: 'openai/gpt-4o-mini'
+    },
+    doubao: {
+      label: 'Volcengine Ark / Doubao',
+      baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+      model: 'doubao-seed-1-6-250615'
+    },
+    doubaoCoding: {
+      label: 'Doubao Coding Plan',
+      baseUrl: 'https://ark.cn-beijing.volces.com/api/coding/v3',
+      model: 'doubao-seed-2-0-code-preview-260215'
+    },
     custom: {
       label: 'Custom OpenAI-compatible',
       baseUrl: 'https://api.openai.com/v1',
@@ -110,9 +145,9 @@ function openOptimizerPanel(context, initialPrompt) {
         const messageText = error && error.message ? error.message : String(error);
         vscode.window.showErrorMessage(`Trae Prompt Optimizer failed: ${messageText}`);
         if (message && ['planStart', 'planAnswer', 'planFinalize'].includes(message.type) && currentPanel) {
-          currentPanel.webview.postMessage({ type: 'planError', value: messageText });
+          currentPanel.webview.postMessage({ type: 'planError', value: friendlyAiError(messageText, message.options || (message.session && message.session.options) || {}) });
         } else if (message && ['aiOptimize', 'listModels', 'testAi', 'saveApiKey', 'diagnoseAi'].includes(message.type) && currentPanel) {
-          currentPanel.webview.postMessage({ type: 'aiError', value: messageText });
+          currentPanel.webview.postMessage({ type: 'aiError', value: friendlyAiError(messageText, message.options || message.ai || {}) });
         }
       }
     },
@@ -518,8 +553,8 @@ function buildExecutionAiUserContent(aiConfig, raw, current, options) {
 
 async function startPlanSession(context, message) {
   const options = message.options || {};
-  const workspaceContext = message.includeWorkspaceContext
-    ? await collectWorkspaceContext()
+  const workspaceContext = message.includeWorkspaceContext || hasAnyContextSelection(message.contextSelection)
+    ? await collectWorkspaceContext(message.contextSelection || {})
     : { enabled: false, summary: '未读取工作区上下文。', labels: [] };
 
   currentPlanSession = {
@@ -790,7 +825,20 @@ function ensureProposedPlan(value) {
   ].join('\n');
 }
 
-async function collectWorkspaceContext() {
+function hasAnyContextSelection(selection) {
+  if (!selection || typeof selection !== 'object') {
+    return false;
+  }
+  return Boolean(selection.structure || selection.readme || selection.packageJson || selection.activeEditor);
+}
+
+async function collectWorkspaceContext(selection) {
+  const picks = {
+    structure: Boolean(selection && selection.structure),
+    readme: Boolean(selection && selection.readme),
+    packageJson: Boolean(selection && selection.packageJson),
+    activeEditor: Boolean(selection && selection.activeEditor)
+  };
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || !folders.length) {
     return { enabled: true, summary: '未打开工作区，无法读取项目上下文。', labels: [] };
@@ -815,8 +863,8 @@ async function collectWorkspaceContext() {
     total += clipped.length;
   };
 
-  const entries = await safeReadDirectory(root);
-  if (entries.length) {
+  const entries = picks.structure ? await safeReadDirectory(root) : [];
+  if (picks.structure && entries.length) {
     const visible = entries
       .map(([name, type]) => ({ name, type }))
       .filter(item => !isBlockedContextName(item.name))
@@ -826,11 +874,15 @@ async function collectWorkspaceContext() {
     addSection('Top-level workspace structure', visible);
   }
 
-  await addWorkspaceFile(root, 'README.md', addSection);
-  await addWorkspaceFile(root, 'package.json', addSection);
+  if (picks.readme) {
+    await addWorkspaceFile(root, 'README.md', addSection);
+  }
+  if (picks.packageJson) {
+    await addWorkspaceFile(root, 'package.json', addSection);
+  }
 
   const editor = vscode.window.activeTextEditor;
-  if (editor && editor.document && !editor.document.isUntitled) {
+  if (picks.activeEditor && editor && editor.document && !editor.document.isUntitled) {
     const fileName = editor.document.uri.fsPath || editor.document.fileName || 'active file';
     if (!isBlockedContextName(fileName)) {
       const selected = editor.selection && !editor.selection.isEmpty
@@ -920,6 +972,38 @@ async function testAiConnection(context, options) {
     count: result.models.length,
     sample: result.models.slice(0, 5)
   };
+}
+
+function friendlyAiError(message, options) {
+  const text = String(message || '');
+  const provider = options && options.provider ? options.provider : '';
+  const base = [
+    text,
+    '',
+    '排查建议：'
+  ];
+  const lower = text.toLowerCase();
+
+  if (lower.includes('does not exist') || lower.includes('do not have access') || lower.includes('model')) {
+    base.push('- 模型 ID 可能填错，或当前 API Key 没有这个模型权限。先点“获取模型”，以返回列表里的模型 id 为准。');
+  }
+  if (lower.includes('401') || lower.includes('unauthorized') || lower.includes('api key')) {
+    base.push('- API Key 可能无效、过期，或不是当前提供商的 Key。');
+  }
+  if (lower.includes('404') || lower.includes('not found') || lower.includes('endpoint')) {
+    base.push('- Base URL 可能填错。Base URL 只填到 /v1 或提供商兼容路径，不要手动加 /chat/completions。');
+  }
+  if (lower.includes('non-json') || lower.includes('timeout') || lower.includes('enotfound') || lower.includes('econn')) {
+    base.push('- 网络、代理或 Base URL 可能不可达；可以先用“一键诊断”确认。');
+  }
+  if (provider === 'doubao' || provider === 'doubaoCoding') {
+    base.push('- 豆包/火山常见问题：控制台展示名不一定是 API 模型 id；Coding Plan 常用 Base URL 是 https://ark.cn-beijing.volces.com/api/coding/v3。');
+  }
+  if (base.length === 3) {
+    base.push('- 请检查 API Key、Base URL 和模型 id 是否匹配同一家提供商。');
+  }
+
+  return base.join('\n');
 }
 
 function postOpenAICompatible(endpoint, apiKey, payload) {
@@ -1561,6 +1645,16 @@ function getWebviewHtml(webview, initialPrompt) {
 
     .plan-context-toggle input { accent-color: var(--teal); }
 
+    .context-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 7px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(240, 237, 229, 0.42);
+    }
+
     .plan-diagnosis {
       min-height: 34px;
       padding: 9px 10px;
@@ -1586,9 +1680,24 @@ function getWebviewHtml(webview, initialPrompt) {
       background: #fff;
     }
 
+    .plan-question-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
     .plan-question strong {
+      flex: 1 1 220px;
       font-size: 12px;
       line-height: 1.45;
+    }
+
+    .plan-question-state {
+      min-width: 92px;
+      height: 30px;
+      font-size: 12px;
     }
 
     .plan-question textarea, .plan-answer-box {
@@ -1732,6 +1841,13 @@ function getWebviewHtml(webview, initialPrompt) {
           <select id="aiProvider">
             <option value="openai">OpenAI 兼容</option>
             <option value="nvidia">NVIDIA</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="gemini">Gemini</option>
+            <option value="kimi">Kimi</option>
+            <option value="groq">Groq</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="doubao">豆包 / 火山方舟</option>
+            <option value="doubaoCoding">豆包 Coding Plan</option>
             <option value="custom">自定义</option>
           </select>
         </div>
@@ -1780,11 +1896,16 @@ function getWebviewHtml(webview, initialPrompt) {
       <div class="plan-body">
         <div class="plan-toolbar">
           <span class="plan-status" id="planStage">未开始</span>
-          <label class="plan-context-toggle"><input id="planWorkspaceContext" type="checkbox">读取轻量工作区上下文</label>
           <button class="btn warn" id="planStartBtn">开始计划</button>
           <button class="btn" id="planAnswerBtn">提交回答</button>
           <button class="btn primary" id="planFinalizeBtn">生成最终计划</button>
           <button class="btn" id="planResetBtn">重新开始</button>
+        </div>
+        <div class="context-grid" aria-label="Workspace context selection">
+          <label class="plan-context-toggle"><input class="plan-context-option" type="checkbox" value="structure">目录结构</label>
+          <label class="plan-context-toggle"><input class="plan-context-option" type="checkbox" value="readme">README</label>
+          <label class="plan-context-toggle"><input class="plan-context-option" type="checkbox" value="packageJson">package.json</label>
+          <label class="plan-context-toggle"><input class="plan-context-option" type="checkbox" value="activeEditor">当前编辑器</label>
         </div>
         <div class="plan-context-labels" id="planContextLabels"></div>
         <div class="plan-diagnosis" id="planDiagnosis">选择 AI 优化模式为“计划模式”后，输入一个目标并点击“开始计划”。</div>
@@ -1929,7 +2050,6 @@ function getWebviewHtml(webview, initialPrompt) {
     const pillRow = document.getElementById('pillRow');
     const historyList = document.getElementById('historyList');
     const planPanel = document.getElementById('planPanel');
-    const planWorkspaceContext = document.getElementById('planWorkspaceContext');
     const planStage = document.getElementById('planStage');
     const planDiagnosis = document.getElementById('planDiagnosis');
     const planQuestions = document.getElementById('planQuestions');
@@ -1943,6 +2063,7 @@ function getWebviewHtml(webview, initialPrompt) {
       status: '未开始',
       diagnosis: '选择 AI 优化模式为“计划模式”后，输入一个目标并点击“开始计划”。',
       questions: [],
+      questionCards: [],
       draftPlan: '',
       finalPlan: '',
       workspaceContext: null
@@ -2110,6 +2231,34 @@ function getWebviewHtml(webview, initialPrompt) {
       nvidia: {
         baseUrl: 'https://integrate.api.nvidia.com/v1',
         model: 'nvidia/llama-3.1-nemotron-nano-8b-v1'
+      },
+      deepseek: {
+        baseUrl: 'https://api.deepseek.com/v1',
+        model: 'deepseek-chat'
+      },
+      gemini: {
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+        model: 'gemini-2.0-flash'
+      },
+      kimi: {
+        baseUrl: 'https://api.moonshot.cn/v1',
+        model: 'kimi-k2-0711-preview'
+      },
+      groq: {
+        baseUrl: 'https://api.groq.com/openai/v1',
+        model: 'llama-3.3-70b-versatile'
+      },
+      openrouter: {
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'openai/gpt-4o-mini'
+      },
+      doubao: {
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+        model: 'doubao-seed-1-6-250615'
+      },
+      doubaoCoding: {
+        baseUrl: 'https://ark.cn-beijing.volces.com/api/coding/v3',
+        model: 'doubao-seed-2-0-code-preview-260215'
       },
       custom: {
         baseUrl: 'https://api.openai.com/v1',
@@ -2597,6 +2746,18 @@ function getWebviewHtml(webview, initialPrompt) {
       };
     }
 
+    function contextSelection() {
+      const selection = {};
+      document.querySelectorAll('.plan-context-option').forEach(input => {
+        selection[input.value] = input.checked;
+      });
+      return selection;
+    }
+
+    function hasContextSelection(selection) {
+      return Boolean(selection.structure || selection.readme || selection.packageJson || selection.activeEditor);
+    }
+
     function persistPlanState() {
       localStorage.setItem('traePromptOptimizer.planState', JSON.stringify(planState));
     }
@@ -2611,6 +2772,7 @@ function getWebviewHtml(webview, initialPrompt) {
             status: saved.status || '等待回答',
             diagnosis: saved.diagnosis || '',
             questions: Array.isArray(saved.questions) ? saved.questions : [],
+            questionCards: Array.isArray(saved.questionCards) ? saved.questionCards : [],
             draftPlan: saved.draftPlan || '',
             finalPlan: saved.finalPlan || '',
             workspaceContext: saved.workspaceContext || null
@@ -2655,8 +2817,21 @@ function getWebviewHtml(webview, initialPrompt) {
         planState.questions.forEach((question, index) => {
           const item = document.createElement('div');
           item.className = 'plan-question';
-          item.innerHTML = '<strong>Q' + (index + 1) + '：' + escapeHtml(question) + '</strong><textarea class="plan-question-answer" data-index="' + index + '" placeholder="在这里回答这个问题"></textarea>';
+          const stored = planState.questionCards && planState.questionCards[index] ? planState.questionCards[index] : {};
+          item.innerHTML = [
+            '<div class="plan-question-head">',
+            '<strong>Q' + (index + 1) + '：' + escapeHtml(question) + '</strong>',
+            '<select class="plan-question-state" data-index="' + index + '">',
+            '<option value="answered">已回答</option>',
+            '<option value="unsure">不确定</option>',
+            '<option value="skip">跳过</option>',
+            '</select>',
+            '</div>',
+            '<textarea class="plan-question-answer" data-index="' + index + '" placeholder="在这里回答这个问题">' + escapeHtml(stored.answer || '') + '</textarea>'
+          ].join('');
           planQuestions.appendChild(item);
+          const state = item.querySelector('.plan-question-state');
+          state.value = stored.state || 'answered';
         });
       }
 
@@ -2700,8 +2875,14 @@ function getWebviewHtml(webview, initialPrompt) {
       document.querySelectorAll('.plan-question-answer').forEach(input => {
         const index = Number(input.getAttribute('data-index'));
         const value = input.value.trim();
-        if (value) {
-          answers.push('Q' + (index + 1) + ': ' + (planState.questions[index] || '') + '\\nA: ' + value);
+        const stateEl = document.querySelector('.plan-question-state[data-index="' + index + '"]');
+        const state = stateEl ? stateEl.value : 'answered';
+        if (!planState.questionCards) {
+          planState.questionCards = [];
+        }
+        planState.questionCards[index] = { state, answer: value };
+        if (value || state !== 'answered') {
+          answers.push('Q' + (index + 1) + ': ' + (planState.questions[index] || '') + '\\n状态: ' + state + '\\nA: ' + (value || '未填写'));
         }
       });
       const extra = planAnswer.value.trim();
@@ -2720,20 +2901,23 @@ function getWebviewHtml(webview, initialPrompt) {
         status: '诊断中',
         diagnosis: '正在诊断目标、上下文和缺口。',
         questions: [],
+        questionCards: [],
         draftPlan: '',
         finalPlan: '',
         workspaceContext: null
       };
       renderPlanState();
+      const selection = contextSelection();
       vscode.postMessage({
         type: 'planStart',
         value: optimizedPrompt.value,
         raw: rawPrompt.value,
         options: requestOptions(),
         ai: aiOptions(),
-        includeWorkspaceContext: planWorkspaceContext.checked
+        includeWorkspaceContext: hasContextSelection(selection),
+        contextSelection: selection
       });
-      notify(planWorkspaceContext.checked ? '正在读取轻量上下文并开始计划' : '正在开始计划');
+      notify(hasContextSelection(selection) ? '正在读取所选上下文并开始计划' : '正在开始计划');
     }
 
     function postPlanAnswer() {
@@ -2771,6 +2955,7 @@ function getWebviewHtml(webview, initialPrompt) {
         status: '未开始',
         diagnosis: '选择 AI 优化模式为“计划模式”后，输入一个目标并点击“开始计划”。',
         questions: [],
+        questionCards: [],
         draftPlan: '',
         finalPlan: '',
         workspaceContext: null
@@ -2786,8 +2971,15 @@ function getWebviewHtml(webview, initialPrompt) {
       aiBaseUrl.value = preset.baseUrl;
       aiModel.value = preset.model;
       aiModelList.innerHTML = '';
-      setStatus(aiProvider.value === 'nvidia' ? 'NVIDIA 预设已就绪，请保存 Key 后一键诊断' : 'AI 预设已切换');
-      notify(aiProvider.value === 'nvidia' ? '已切换到 NVIDIA 预设' : '已切换 AI 预设');
+      const special = aiProvider.value === 'nvidia'
+        ? 'NVIDIA 预设已就绪，请保存 Key 后一键诊断'
+        : aiProvider.value === 'doubaoCoding'
+          ? '豆包 Coding Plan 预设已就绪，模型名请以获取模型结果为准'
+          : aiProvider.value === 'doubao'
+            ? '豆包/火山方舟预设已就绪，请确认模型权限'
+            : 'AI 预设已切换';
+      setStatus(special);
+      notify('已切换 AI 预设');
     }
 
     function setModels(models) {
@@ -2966,6 +3158,7 @@ function getWebviewHtml(webview, initialPrompt) {
           status: value.status || '等待回答',
           diagnosis: value.diagnosis || '',
           questions: Array.isArray(value.questions) ? value.questions : [],
+          questionCards: [],
           draftPlan: value.draftPlan || '',
           finalPlan: value.finalPlan || '',
           workspaceContext: value.workspaceContext || null

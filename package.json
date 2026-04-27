@@ -2,7 +2,7 @@
   "name": "trae-prompt-optimizer",
   "displayName": "Trae Prompt Optimizer",
   "description": "Turn rough goals into multi-round plan-mode prompts and Trae-ready execution plans inspired by Harness.",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -41,14 +41,21 @@
           "enum": [
             "openai",
             "nvidia",
+            "deepseek",
+            "gemini",
+            "kimi",
+            "groq",
+            "openrouter",
+            "doubao",
+            "doubaoCoding",
             "custom"
           ],
-          "description": "AI provider preset used by the optimizer. NVIDIA uses https://integrate.api.nvidia.com/v1."
+          "description": "AI provider preset used by the optimizer. Presets fill a compatible Base URL and starter model."
         },
         "traePromptOptimizer.ai.baseUrl": {
           "type": "string",
           "default": "https://api.openai.com/v1",
-          "description": "OpenAI-compatible API base URL, for example https://api.openai.com/v1 or a local/third-party compatible endpoint."
+          "description": "OpenAI-compatible API base URL. Use the provider preset in the Webview for DeepSeek, Gemini, Kimi, Groq, OpenRouter, NVIDIA, or Doubao examples."
         },
         "traePromptOptimizer.ai.model": {
           "type": "string",

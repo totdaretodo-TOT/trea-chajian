@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.0
+
+- Add provider presets for DeepSeek, Gemini OpenAI compatibility, Kimi, Groq, OpenRouter, Volcengine Ark/Doubao, and Doubao Coding Plan.
+- Improve AI error messages with actionable Chinese diagnostics for wrong model IDs, missing permissions, bad Base URLs, invalid keys, and provider mismatch.
+- Replace the single workspace-context checkbox with a selector for directory structure, README, package.json, and active editor context.
+- Upgrade Plan Mode questions into answer cards with `已回答`, `不确定`, and `跳过` states.
+
 ## 0.10.0
 
 - Add AI `计划模式` for multi-round planning before producing a final implementation plan.

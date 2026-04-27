@@ -14,11 +14,11 @@
 - 一键保存到当前工作区 `.trae/rules/harness-blueprint-prompt.md`。
 - 可选接入 OpenAI-compatible API，默认进行“计划模式”：多轮追问后生成 `<proposed_plan>` 执行计划。
 - 支持在面板中切换 `计划模式`、`提问式落地` 和 `直接执行 Prompt` 三种 AI 优化模式。
-- 计划模式支持每轮 5-8 个关键问题、逐条回答或整体粘贴回答、最终生成可评审计划。
-- 计划模式可选读取轻量工作区上下文，只读取 README、package、顶层目录和当前文件摘要，并排除 `.env*`、`.git`、`node_modules`、`dist`、secret/token/key 类文件。
+- 计划模式支持每轮 5-8 个关键问题、卡片式回答、标记不确定/跳过、整体粘贴回答、最终生成可评审计划。
+- 计划模式可选读取轻量工作区上下文，可分别勾选目录结构、README、package.json、当前编辑器，并排除 `.env*`、`.git`、`node_modules`、`dist`、secret/token/key 类文件。
 - AI 配置、任务设置、诊断详情和历史记录都支持折叠，默认界面更清爽。
 - 优化结果顶部的评分说明和关注标签分行展示，避免窄屏下中文被挤成竖排。
-- 内置 NVIDIA API Catalog 预设，可一键填入 `https://integrate.api.nvidia.com/v1` 并获取模型列表。
+- 内置 OpenAI、NVIDIA、DeepSeek、Gemini、Kimi、Groq、OpenRouter、豆包/火山方舟和豆包 Coding Plan 预设，可一键填入 Base URL 并获取模型列表。
 - 在插件面板内保存 API Key、获取模型和一键诊断，尽量减少命令行操作。
 - 默认本地运行，不调用外部 API；只有点击 `开始计划` / `AI 提问式优化` / `AI 二次优化` 并配置 API Key 后才会把提示词发送到你设置的模型服务。
 
@@ -30,7 +30,7 @@
    npm run package
    ```
 
-2. 得到 `dist/trae-prompt-optimizer-0.10.0.vsix`。
+2. 得到 `dist/trae-prompt-optimizer-0.11.0.vsix`。
 3. 打开 Trae 的扩展商店。
 4. 把 `.vsix` 文件拖入扩展商店安装。
 5. 安装后打开命令面板，运行 `Trae Prompt Optimizer: Open`。
@@ -79,7 +79,7 @@
 
 - 先诊断目标、上下文、缺口和高影响歧义。
 - 每轮提出 5-8 个会改变方案的问题。
-- 支持用户逐条填写答案，或在整体回答框里一次粘贴背景。
+- 支持用户逐条填写答案，标记“不确定/跳过”，或在整体回答框里一次粘贴背景。
 - 信息足够后生成包含 `<proposed_plan>` 的最终计划。
 - 最终计划默认包含 Summary、Key Changes、Test Plan 和 Assumptions。
 
@@ -94,7 +94,19 @@
 
 API Key 会保存在 VS Code/Trae SecretStorage。命令 `Trae Prompt Optimizer: Set AI API Key` 仍保留为备用入口，但日常不需要使用命令行或命令面板配置。
 
-### NVIDIA API 配置
+### API Provider 配置
+
+插件面板内置多个 OpenAI-compatible 预设：
+
+- OpenAI：`https://api.openai.com/v1`
+- NVIDIA：`https://integrate.api.nvidia.com/v1`
+- DeepSeek：`https://api.deepseek.com/v1`
+- Gemini：`https://generativelanguage.googleapis.com/v1beta/openai`
+- Kimi / Moonshot：`https://api.moonshot.cn/v1`
+- Groq：`https://api.groq.com/openai/v1`
+- OpenRouter：`https://openrouter.ai/api/v1`
+- 豆包 / 火山方舟：`https://ark.cn-beijing.volces.com/api/v3`
+- 豆包 Coding Plan：`https://ark.cn-beijing.volces.com/api/coding/v3`
 
 如果使用 NVIDIA API Catalog：
 
@@ -114,6 +126,8 @@ API Key 会保存在 VS Code/Trae SecretStorage。命令 `Trae Prompt Optimizer:
 - 不要把 Base URL 填成 `build.nvidia.com` 或网页地址。
 - 不要继续用默认模型 `gpt-4o-mini` 调 NVIDIA。
 - 如果某个旧模型 404，先点 `获取模型` 换成当前 API Key 可用的模型。
+- 豆包/火山方舟不要把控制台展示名当成 API 模型 id；优先用 `获取模型` 返回的 id。
+- Base URL 不要手动加 `/chat/completions`，插件会自动拼接。
 
 `发送到 Trae` 按钮会复制优化结果，并尝试执行 `traePromptOptimizer.traeChatCommand` 配置的命令来打开聊天面板。默认值是 `workbench.action.chat.open`；如果 Trae 未来公开了专用命令 ID，可以在设置里替换。
 
