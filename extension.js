@@ -1023,6 +1023,7 @@ function postOpenAICompatible(endpoint, apiKey, payload) {
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
           'Content-Length': body.length
         },
         timeout: 60000
@@ -1036,8 +1037,9 @@ function postOpenAICompatible(endpoint, apiKey, payload) {
 
           try {
             json = text ? JSON.parse(text) : {};
-          } catch {
-            reject(new Error(`AI API returned non-JSON response with status ${response.statusCode}.`));
+          } catch (e) {
+            const preview = text ? (text.length > 200 ? text.slice(0, 200) + '...' : text) : 'Empty response';
+            reject(new Error(`AI API returned non-JSON response (Status ${response.statusCode}). Body: ${preview}`));
             return;
           }
 
@@ -1059,7 +1061,8 @@ function postOpenAICompatible(endpoint, apiKey, payload) {
     });
     request.on('error', err => {
       console.error('AI API Request Error:', err);
-      reject(new Error(`网络请求失败: ${err.message || '未知错误'}. 请检查 Base URL 是否正确或网络连接是否正常。`));
+      const code = err.code ? ` (${err.code})` : '';
+      reject(new Error(`网络请求失败${code}: ${err.message || '未知错误'}. 请检查 Base URL 是否正确、网络连接或代理设置。`));
     });
     request.write(body);
     request.end();
@@ -1119,20 +1122,28 @@ function getOpenAICompatible(endpoint, apiKey) {
 }
 
 function normalizeBaseUrl(baseUrl) {
-  const trimmed = String(baseUrl || '').trim().replace(/\/+$/, '');
-  if (!trimmed) {
+  let urlPart = String(baseUrl || '').trim();
+  if (!urlPart) {
     throw new Error('AI base URL is not configured.');
   }
 
-  if (trimmed.endsWith('/chat/completions')) {
-    return trimmed.slice(0, -'/chat/completions'.length);
+  let queryPart = '';
+  if (urlPart.includes('?')) {
+    const parts = urlPart.split('?');
+    urlPart = parts[0];
+    queryPart = parts.slice(1).join('?');
   }
 
-  if (trimmed.endsWith('/models')) {
-    return trimmed.slice(0, -'/models'.length);
+  urlPart = urlPart.replace(/\/+$/, '');
+
+  if (urlPart.endsWith('/chat/completions')) {
+    urlPart = urlPart.slice(0, -'/chat/completions'.length);
+  } else if (urlPart.endsWith('/models')) {
+    urlPart = urlPart.slice(0, -'/models'.length);
   }
 
-  return trimmed;
+  urlPart = urlPart.replace(/\/+$/, '');
+  return queryPart ? `${urlPart}?${queryPart}` : urlPart;
 }
 
 function getChatCompletionsEndpoint(baseUrl) {

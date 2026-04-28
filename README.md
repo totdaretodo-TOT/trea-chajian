@@ -30,7 +30,7 @@
    npm run package
    ```
 
-2. 得到 `dist/trae-prompt-optimizer-0.11.1.vsix`。
+2. 得到 `dist/trae-prompt-optimizer-0.11.2.vsix`。
 3. 打开 Trae 的扩展商店。
 4. 把 `.vsix` 文件拖入扩展商店安装。
 5. 安装后打开命令面板，运行 `Trae Prompt Optimizer: Open`。

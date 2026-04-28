@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.2
+
+- Improve OpenAI-compatible API diagnostics for non-JSON responses and network failures.
+- Preserve query parameters when normalizing Base URLs for providers that require them.
+- Add an explicit `Accept: application/json` header to chat completion requests.
+
 ## 0.11.1
 
 - Improve narrow Webview layout so fold titles, plan controls, context options, and diagnosis text stay inside their containers.
