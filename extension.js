@@ -1,3 +1,4 @@
+
 const vscode = require('vscode');
 const http = require('http');
 const https = require('https');
@@ -34,7 +35,7 @@ function activate(context) {
   );
 }
 
-function deactivate() {}
+function deactivate() { }
 
 function getProviderPreset(provider) {
   const presets = {
@@ -1056,7 +1057,10 @@ function postOpenAICompatible(endpoint, apiKey, payload) {
     request.on('timeout', () => {
       request.destroy(new Error('AI API request timed out.'));
     });
-    request.on('error', reject);
+    request.on('error', err => {
+      console.error('AI API Request Error:', err);
+      reject(new Error(`网络请求失败: ${err.message || '未知错误'}. 请检查 Base URL 是否正确或网络连接是否正常。`));
+    });
     request.write(body);
     request.end();
   });
@@ -1132,11 +1136,21 @@ function normalizeBaseUrl(baseUrl) {
 }
 
 function getChatCompletionsEndpoint(baseUrl) {
-  return `${normalizeBaseUrl(baseUrl)}/chat/completions`;
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (normalized.includes('?')) {
+    const [base, query] = normalized.split('?');
+    return `${base}/chat/completions?${query}`;
+  }
+  return `${normalized}/chat/completions`;
 }
 
 function getModelsEndpoint(baseUrl) {
-  return `${normalizeBaseUrl(baseUrl)}/models`;
+  const normalized = normalizeBaseUrl(baseUrl);
+  if (normalized.includes('?')) {
+    const [base, query] = normalized.split('?');
+    return `${base}/models?${query}`;
+  }
+  return `${normalized}/models`;
 }
 
 function escapeHtml(value) {
@@ -1202,14 +1216,14 @@ function getWebviewHtml(webview, initialPrompt) {
 
     button, select, textarea { font: inherit; }
 
-    .shell { min-height: 100vh; padding: 18px; }
+    .shell { min-height: 100vh; padding: 12px; }
 
     .topbar {
-      display: grid;
-      grid-template-columns: minmax(260px, 1fr) auto;
-      gap: 16px;
-      align-items: center;
-      margin-bottom: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      margin-bottom: 12px;
     }
 
     .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -1226,19 +1240,19 @@ function getWebviewHtml(webview, initialPrompt) {
       line-height: 1;
     }
 
-    h1 { margin: 0; font-size: 18px; line-height: 1.25; }
-    .subtitle { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+    h1 { margin: 0; font-size: 16px; line-height: 1.2; }
+    .subtitle { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
 
     .top-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
-      justify-content: flex-end;
+      gap: 6px;
+      justify-content: flex-start;
     }
 
     .workspace {
       display: grid;
-      grid-template-columns: minmax(320px, 0.92fr) minmax(380px, 1.08fr);
+      grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
       gap: 14px;
       min-height: calc(100vh - 150px);
     }
@@ -1246,7 +1260,7 @@ function getWebviewHtml(webview, initialPrompt) {
     .panel {
       display: flex;
       min-width: 0;
-      min-height: 540px;
+      /* min-height removed for responsive design */
       flex-direction: column;
       border: 1px solid var(--line);
       border-radius: var(--radius);
@@ -1284,7 +1298,7 @@ function getWebviewHtml(webview, initialPrompt) {
 
     .controls {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 10px;
       padding: 12px 14px;
       border-bottom: 1px solid var(--line);
@@ -1469,15 +1483,15 @@ function getWebviewHtml(webview, initialPrompt) {
     }
 
     .btn {
-      min-height: 34px;
-      padding: 7px 11px;
+      min-height: 28px;
+      padding: 4px 8px;
       border: 1px solid var(--line);
-      border-radius: var(--radius);
+      border-radius: 6px;
       background: #fff;
       color: var(--ink);
       cursor: pointer;
-      font-size: 12px;
-      font-weight: 800;
+      font-size: 11px;
+      font-weight: 700;
     }
 
     .btn:hover { border-color: rgba(15, 118, 110, 0.55); color: var(--teal-dark); }
@@ -1488,7 +1502,7 @@ function getWebviewHtml(webview, initialPrompt) {
 
     .ai-settings {
       display: grid;
-      grid-template-columns: minmax(128px, 0.7fr) minmax(138px, 0.75fr) minmax(180px, 1fr) minmax(160px, 0.9fr) minmax(150px, 0.85fr) auto auto auto;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
       gap: 8px;
       padding: 12px 14px;
       border-top: 1px solid var(--line);
@@ -1522,6 +1536,7 @@ function getWebviewHtml(webview, initialPrompt) {
     .status-line strong { color: var(--ink); }
 
     .fold {
+      min-width: 0;
       margin-bottom: 12px;
       border: 1px solid var(--line);
       border-radius: var(--radius);
@@ -1534,9 +1549,9 @@ function getWebviewHtml(webview, initialPrompt) {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: 8px;
       min-height: 42px;
-      padding: 10px 14px;
+      padding: 9px 12px;
       cursor: pointer;
       user-select: none;
       list-style: none;
@@ -1566,13 +1581,17 @@ function getWebviewHtml(webview, initialPrompt) {
       display: flex;
       align-items: center;
       gap: 9px;
-      min-width: 0;
+      min-width: max-content;
       margin-right: auto;
       font-size: 13px;
       font-weight: 800;
+      line-height: 1.25;
+      white-space: nowrap;
     }
 
     .fold-summary-note {
+      min-width: 0;
+      max-width: 54%;
       overflow: hidden;
       color: var(--muted);
       font-size: 12px;
@@ -1610,19 +1629,24 @@ function getWebviewHtml(webview, initialPrompt) {
     .plan-body {
       display: grid;
       gap: 10px;
+      min-width: 0;
       padding: 12px 14px;
     }
 
     .plan-toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 8px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+      gap: 6px;
+    }
+    .plan-toolbar .btn {
+      width: 100%;
+      min-width: 0;
     }
 
     .plan-status {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       min-height: 28px;
       padding: 5px 9px;
       border: 1px solid rgba(15, 118, 110, 0.25);
@@ -1637,19 +1661,23 @@ function getWebviewHtml(webview, initialPrompt) {
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      min-width: 0;
       margin: 0;
       color: var(--ink);
       font-size: 12px;
       cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .plan-context-toggle input { accent-color: var(--teal); }
 
     .context-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(120px, 1fr));
-      gap: 7px;
-      padding: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 6px;
+      padding: 6px;
       border: 1px solid var(--line);
       border-radius: var(--radius);
       background: rgba(240, 237, 229, 0.42);
@@ -1664,6 +1692,8 @@ function getWebviewHtml(webview, initialPrompt) {
       color: var(--muted);
       font-size: 12px;
       line-height: 1.5;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .plan-question-list {
@@ -1674,6 +1704,7 @@ function getWebviewHtml(webview, initialPrompt) {
     .plan-question {
       display: grid;
       gap: 7px;
+      min-width: 0;
       padding: 9px;
       border: 1px solid var(--line);
       border-radius: var(--radius);
@@ -1689,13 +1720,16 @@ function getWebviewHtml(webview, initialPrompt) {
     }
 
     .plan-question strong {
-      flex: 1 1 220px;
+      flex: 1 1 180px;
+      min-width: 0;
       font-size: 12px;
       line-height: 1.45;
+      overflow-wrap: anywhere;
     }
 
     .plan-question-state {
-      min-width: 92px;
+      width: 96px;
+      max-width: 100%;
       height: 30px;
       font-size: 12px;
     }
@@ -1720,6 +1754,13 @@ function getWebviewHtml(webview, initialPrompt) {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
+      min-width: 0;
+    }
+
+    .plan-context-labels .pill {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .history {
@@ -1797,15 +1838,27 @@ function getWebviewHtml(webview, initialPrompt) {
     @media (max-width: 980px) {
       .topbar, .workspace { grid-template-columns: 1fr; }
       .top-actions { justify-content: flex-start; }
-      .controls { grid-template-columns: 1fr; }
-      .ai-settings { grid-template-columns: 1fr; }
+      .controls { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+      .ai-settings { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
       .history-list { grid-template-columns: 1fr; }
+      .brand .subtitle { display: none; }
     }
 
     @media (max-width: 560px) {
+      .shell { padding: 8px; }
+      .brand h1 { font-size: 14px; }
+      .brand .mark { display: none; }
+      .top-actions .btn { flex: 1 1 calc(50% - 6px); text-align: center; justify-content: center; }
+      .fold-summary-note { display: none; }
+      .fold-summary-main { min-width: 0; }
+      .plan-status { grid-column: 1 / -1; }
+      .context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .scorebar { grid-template-columns: 1fr; }
-      .score { width: 44px; height: 44px; }
+      .score { width: 36px; height: 36px; font-size: 14px; }
       .pill-row { padding-left: 0; }
+      .plan-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .plan-body { padding: 10px; }
+      .plan-question-state { width: 100%; }
     }
   </style>
 </head>
@@ -1832,8 +1885,8 @@ function getWebviewHtml(webview, initialPrompt) {
 
     <details class="fold">
       <summary>
-        <span class="fold-summary-main"><span class="dot"></span>AI 配置和模型</span>
-        <span class="fold-summary-note">配置 Key、模型、NVIDIA 诊断；默认计划模式</span>
+        <span class="fold-summary-main"><span class="dot"></span>AI 配置</span>
+        <span class="fold-summary-note">Key、模型与预设</span>
       </summary>
       <section class="ai-settings" aria-label="AI settings">
         <div>
@@ -1891,7 +1944,7 @@ function getWebviewHtml(webview, initialPrompt) {
     <details class="fold plan-panel" id="planPanel">
       <summary>
         <span class="fold-summary-main"><span class="dot"></span>计划模式</span>
-        <span class="fold-summary-note">多轮追问，最后输出 proposed_plan</span>
+        <span class="fold-summary-note">多轮对话细化方案</span>
       </summary>
       <div class="plan-body">
         <div class="plan-toolbar">
@@ -1923,7 +1976,7 @@ function getWebviewHtml(webview, initialPrompt) {
         <details class="fold">
           <summary>
             <span class="fold-summary-main"><span class="dot"></span>任务设置</span>
-            <span class="fold-summary-note">项目类型、场景、强度、语言和关注领域</span>
+            <span class="fold-summary-note">项目、场景、强度与领域</span>
           </summary>
           <div class="controls">
             <div>
@@ -1999,8 +2052,8 @@ function getWebviewHtml(webview, initialPrompt) {
           </div>
           <details class="fold">
             <summary>
-              <span class="fold-summary-main"><span class="dot"></span>诊断详情</span>
-              <span class="fold-summary-note">缺失项、关注领域和补齐依据</span>
+            <span class="fold-summary-main"><span class="dot"></span>诊断详情</span>
+            <span class="fold-summary-note">缺失项与关注依据</span>
             </summary>
             <div class="diagnosis">
               <div class="diagnosis-title" id="diagnosisTitle">第一性原理诊断：把想法变成可执行任务规格</div>

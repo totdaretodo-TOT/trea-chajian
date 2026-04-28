@@ -2,7 +2,7 @@
   "name": "trae-prompt-optimizer",
   "displayName": "Trae Prompt Optimizer",
   "description": "Turn rough goals into multi-round plan-mode prompts and Trae-ready execution plans inspired by Harness.",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "publisher": "local",
   "license": "MIT",
   "engines": {

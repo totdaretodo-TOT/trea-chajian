@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1
+
+- Improve narrow Webview layout so fold titles, plan controls, context options, and diagnosis text stay inside their containers.
+- Hide low-priority fold summaries on small widths and keep primary titles on one line.
+- Make Plan Mode actions use a stable responsive grid instead of cramped wrapping buttons.
+
 ## 0.11.0
 
 - Add provider presets for DeepSeek, Gemini OpenAI compatibility, Kimi, Groq, OpenRouter, Volcengine Ark/Doubao, and Doubao Coding Plan.
