@@ -1,8 +1,8 @@
 {
   "name": "trae-prompt-optimizer",
   "displayName": "Trae Prompt Optimizer",
-  "description": "Turn rough goals into multi-round plan-mode prompts and Trae-ready execution plans inspired by Harness.",
-  "version": "0.11.2",
+  "description": "Turn rough goals into multi-round plan-mode prompts, MCP-readable context, and Trae-ready execution plans.",
+  "version": "0.12.0",
   "publisher": "local",
   "license": "MIT",
   "engines": {
@@ -17,6 +17,9 @@
     "onCommand:traePromptOptimizer.setApiKey"
   ],
   "main": "./extension.js",
+  "bin": {
+    "trae-prompt-optimizer-mcp": "./mcp-server.js"
+  },
   "contributes": {
     "commands": [
       {
@@ -97,6 +100,8 @@
   },
   "scripts": {
     "lint": "node --check extension.js",
+    "lint:mcp": "node --check mcp-server.js",
+    "mcp": "node mcp-server.js",
     "package": "powershell -ExecutionPolicy Bypass -File scripts/package-vsix.ps1"
   }
 }

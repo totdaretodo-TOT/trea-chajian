@@ -6,7 +6,10 @@ const https = require('https');
 let currentPanel;
 let currentPlanSession;
 
-const API_KEY_SECRET = 'traePromptOptimizer.openaiCompatibleApiKey';
+// The API key secret now depends on the selected provider.
+function apiKeySecretName(provider) {
+  return `traePromptOptimizer.${provider}.apiKey`;
+}
 const PLAN_CONTEXT_FILE_LIMIT = 20 * 1024;
 const PLAN_CONTEXT_TOTAL_LIMIT = 60 * 1024;
 const PLAN_QUESTION_MIN = 5;
@@ -147,6 +150,8 @@ function openOptimizerPanel(context, initialPrompt) {
         vscode.window.showErrorMessage(`Trae Prompt Optimizer failed: ${messageText}`);
         if (message && ['planStart', 'planAnswer', 'planFinalize'].includes(message.type) && currentPanel) {
           currentPanel.webview.postMessage({ type: 'planError', value: friendlyAiError(messageText, message.options || (message.session && message.session.options) || {}) });
+        } else if (message && message.type === 'exportMcpContext' && currentPanel) {
+          currentPanel.webview.postMessage({ type: 'mcpContextError', value: messageText });
         } else if (message && ['aiOptimize', 'listModels', 'testAi', 'saveApiKey', 'diagnoseAi'].includes(message.type) && currentPanel) {
           currentPanel.webview.postMessage({ type: 'aiError', value: friendlyAiError(messageText, message.options || message.ai || {}) });
         }
@@ -239,7 +244,7 @@ async function handleWebviewMessage(context, message) {
   }
 
   if (message.type === 'saveApiKey') {
-    await storeApiKey(context, message.apiKey || '');
+    await storeApiKey(context, message.apiKey || '', message.options && message.options.provider);
     if (currentPanel) {
       currentPanel.webview.postMessage({ type: 'apiKeySaved' });
     }
@@ -247,7 +252,8 @@ async function handleWebviewMessage(context, message) {
   }
 
   if (message.type === 'getApiKeyStatus') {
-    const hasApiKey = Boolean(await context.secrets.get(API_KEY_SECRET));
+    const provider = message.options && message.options.provider ? message.options.provider : getAiConfig({}).provider;
+    const hasApiKey = Boolean(await context.secrets.get(apiKeySecretName(provider)));
     if (currentPanel) {
       currentPanel.webview.postMessage({ type: 'apiKeyStatus', value: { hasApiKey } });
     }
@@ -256,7 +262,7 @@ async function handleWebviewMessage(context, message) {
 
   if (message.type === 'diagnoseAi') {
     if (message.apiKey) {
-      await storeApiKey(context, message.apiKey);
+      await storeApiKey(context, message.apiKey, message.options && message.options.provider);
     }
     const models = await listAiModels(context, message.options || {});
     if (currentPanel) {
@@ -270,6 +276,14 @@ async function handleWebviewMessage(context, message) {
           models: models.models
         }
       });
+    }
+    return;
+  }
+
+  if (message.type === 'exportMcpContext') {
+    const result = await exportMcpContext(message);
+    if (currentPanel) {
+      currentPanel.webview.postMessage({ type: 'mcpContextExported', value: result });
     }
   }
 }
@@ -327,6 +341,83 @@ async function saveWorkspaceRule(text) {
   vscode.window.showInformationMessage(`Saved workspace rule: ${target.fsPath}`);
 }
 
+async function exportMcpContext(message) {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) {
+    throw new Error('Open a workspace folder before exporting MCP context.');
+  }
+
+  const root = folders[0].uri;
+  const selection = message.contextSelection || {};
+  const workspaceContext = hasAnyContextSelection(selection)
+    ? await collectWorkspaceContext(selection)
+    : { enabled: false, summary: '未选择工作区上下文。', labels: [] };
+  const targetDir = vscode.Uri.joinPath(root, '.trae', 'prompt-optimizer');
+  await vscode.workspace.fs.createDirectory(targetDir);
+
+  const snapshot = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    workspace: root.fsPath,
+    source: 'Trae Prompt Optimizer',
+    rawPrompt: String(message.raw || ''),
+    optimizedPrompt: String(message.value || ''),
+    options: message.options || {},
+    contextSelection: selection,
+    workspaceContext: {
+      enabled: workspaceContext.enabled,
+      labels: workspaceContext.labels || [],
+      summary: workspaceContext.summary || ''
+    },
+    planSession: message.planState || null
+  };
+
+  const contextUri = vscode.Uri.joinPath(targetDir, 'context.json');
+  const memoryUri = vscode.Uri.joinPath(targetDir, 'memory.md');
+  const ignoreUri = vscode.Uri.joinPath(targetDir, '.gitignore');
+  await vscode.workspace.fs.writeFile(ignoreUri, Buffer.from('*\n!.gitignore\n', 'utf8'));
+  await vscode.workspace.fs.writeFile(contextUri, Buffer.from(JSON.stringify(snapshot, null, 2), 'utf8'));
+
+  const existingMemory = await readTextIfExists(memoryUri);
+  const memoryEntry = buildMemoryEntry(snapshot);
+  const memory = existingMemory
+    ? `${existingMemory.trim()}\n\n${memoryEntry}`
+    : `# Trae Prompt Optimizer Memory\n\n${memoryEntry}`;
+  await vscode.workspace.fs.writeFile(memoryUri, Buffer.from(memory, 'utf8'));
+
+  vscode.window.showInformationMessage(`Exported MCP context: ${contextUri.fsPath}`);
+  return {
+    contextPath: contextUri.fsPath,
+    memoryPath: memoryUri.fsPath,
+    labels: workspaceContext.labels || []
+  };
+}
+
+async function readTextIfExists(uri) {
+  try {
+    const bytes = await vscode.workspace.fs.readFile(uri);
+    return Buffer.from(bytes).toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
+function buildMemoryEntry(snapshot) {
+  const finalText = snapshot.optimizedPrompt || '未生成优化结果';
+  return [
+    `## ${snapshot.generatedAt}`,
+    '',
+    '### Goal',
+    truncateText(snapshot.rawPrompt || '未提供', 2000),
+    '',
+    '### Context Labels',
+    (snapshot.workspaceContext.labels || []).length ? (snapshot.workspaceContext.labels || []).map(label => `- ${label}`).join('\n') : '- 未选择上下文',
+    '',
+    '### Latest Output',
+    truncateText(finalText, 12000)
+  ].join('\n');
+}
+
 async function sendToTraeChat(text) {
   await vscode.env.clipboard.writeText(text);
 
@@ -378,17 +469,32 @@ async function promptAndStoreApiKey(context) {
   return true;
 }
 
-async function storeApiKey(context, value) {
+async function storeApiKey(context, value, provider) {
   const apiKey = String(value || '').trim();
   if (!apiKey) {
     throw new Error('API Key cannot be empty.');
   }
-
-  await context.secrets.store(API_KEY_SECRET, apiKey);
+  // Validate that the key does not contain illegal whitespace.
+  if (/\s/.test(apiKey)) {
+    throw new Error('API Key contains illegal whitespace.');
+  }
+  // Store under a provider‑specific secret name.
+  const secretName = apiKeySecretName(provider || getAiConfig({}).provider);
+  await context.secrets.store(secretName, apiKey);
 }
 
-async function getApiKey(context) {
-  let apiKey = await context.secrets.get(API_KEY_SECRET);
+async function getApiKey(context, provider) {
+  // Provider‑specific secret name.
+  const resolvedProvider = provider || getAiConfig({}).provider;
+  const secretName = apiKeySecretName(resolvedProvider);
+  let apiKey = await context.secrets.get(secretName);
+
+  // Fallback to environment variable for headless usage.
+  if (!apiKey) {
+    const envVar = `TRAE_API_KEY_${String(resolvedProvider || '').toUpperCase()}`;
+    apiKey = process.env[envVar];
+  }
+
   if (apiKey) {
     return apiKey;
   }
@@ -408,7 +514,7 @@ async function getApiKey(context) {
     throw new Error('AI API key is not configured.');
   }
 
-  apiKey = await context.secrets.get(API_KEY_SECRET);
+  apiKey = await context.secrets.get(secretName);
   if (!apiKey) {
     throw new Error('AI API key is not configured.');
   }
@@ -418,7 +524,7 @@ async function getApiKey(context) {
 
 async function optimizeWithAi(context, message) {
   const aiConfig = getAiConfig(message.ai || {});
-  const apiKey = await getApiKey(context);
+  const apiKey = await getApiKey(context, aiConfig.provider);
 
   const raw = message.raw || '';
   const current = message.value || '';
@@ -611,7 +717,7 @@ function ensurePlanSession(fallbackSession) {
 
 async function runPlanAi(context, session, action, latestAnswer) {
   const aiConfig = getAiConfig({ ...(session.options.ai || {}), ...(session.ai || {}) });
-  const apiKey = await getApiKey(context);
+  const apiKey = await getApiKey(context, aiConfig.provider);
   const response = await postOpenAICompatible(getChatCompletionsEndpoint(aiConfig.baseUrl), apiKey, {
     model: aiConfig.model,
     temperature: action === 'finalize' ? 0.2 : 0.25,
@@ -946,7 +1052,7 @@ function truncateText(value, limit) {
 
 async function listAiModels(context, options) {
   const aiConfig = getAiConfig(options || {});
-  const apiKey = await getApiKey(context);
+  const apiKey = await getApiKey(context, aiConfig.provider);
   const response = await getOpenAICompatible(getModelsEndpoint(aiConfig.baseUrl), apiKey);
   const data = Array.isArray(response.data) ? response.data : [];
   const models = data
@@ -994,8 +1100,9 @@ function friendlyAiError(message, options) {
   if (lower.includes('404') || lower.includes('not found') || lower.includes('endpoint')) {
     base.push('- Base URL 可能填错。Base URL 只填到 /v1 或提供商兼容路径，不要手动加 /chat/completions。');
   }
-  if (lower.includes('non-json') || lower.includes('timeout') || lower.includes('enotfound') || lower.includes('econn')) {
+  if (lower.includes('non-json') || lower.includes('timeout') || lower.includes('enotfound') || lower.includes('econn') || lower.includes('network')) {
     base.push('- 网络、代理或 Base URL 可能不可达；可以先用“一键诊断”确认。');
+    base.push('- 请求可能被本地防火墙或公司代理拦截，请检查代理设置或使用直连网络。');
   }
   if (provider === 'doubao' || provider === 'doubaoCoding') {
     base.push('- 豆包/火山常见问题：控制台展示名不一定是 API 模型 id；Coding Plan 常用 Base URL 是 https://ark.cn-beijing.volces.com/api/coding/v3。');
@@ -1095,8 +1202,11 @@ function getOpenAICompatible(endpoint, apiKey) {
 
           try {
             json = text ? JSON.parse(text) : {};
-          } catch {
-            reject(new Error(`AI API returned non-JSON response with status ${response.statusCode}.`));
+          } catch (e) {
+            const preview = text ? (text.length > 200 ? text.slice(0, 200) + '...' : text) : 'Empty response';
+            const err = new Error(`AI API returned non-JSON response (Status ${response.statusCode}). Body: ${preview}`);
+            err.original = e; // preserve original stack for debugging
+            reject(err);
             return;
           }
 
@@ -1148,6 +1258,9 @@ function normalizeBaseUrl(baseUrl) {
 
 function getChatCompletionsEndpoint(baseUrl) {
   const normalized = normalizeBaseUrl(baseUrl);
+  if (normalized.endsWith('/chat/completions')) {
+    return normalized; // already includes the suffix
+  }
   if (normalized.includes('?')) {
     const [base, query] = normalized.split('?');
     return `${base}/chat/completions?${query}`;
@@ -1157,6 +1270,9 @@ function getChatCompletionsEndpoint(baseUrl) {
 
 function getModelsEndpoint(baseUrl) {
   const normalized = normalizeBaseUrl(baseUrl);
+  if (normalized.endsWith('/models')) {
+    return normalized; // already includes the suffix
+  }
   if (normalized.includes('?')) {
     const [base, query] = normalized.split('?');
     return `${base}/models?${query}`;
@@ -1774,6 +1890,13 @@ function getWebviewHtml(webview, initialPrompt) {
       text-overflow: ellipsis;
     }
 
+    .mcp-note {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
     .history {
       margin-top: 14px;
       border: 1px solid var(--line);
@@ -1963,6 +2086,7 @@ function getWebviewHtml(webview, initialPrompt) {
           <button class="btn warn" id="planStartBtn">开始计划</button>
           <button class="btn" id="planAnswerBtn">提交回答</button>
           <button class="btn primary" id="planFinalizeBtn">生成最终计划</button>
+          <button class="btn" id="mcpExportBtn">导出 MCP 上下文</button>
           <button class="btn" id="planResetBtn">重新开始</button>
         </div>
         <div class="context-grid" aria-label="Workspace context selection">
@@ -1972,6 +2096,7 @@ function getWebviewHtml(webview, initialPrompt) {
           <label class="plan-context-toggle"><input class="plan-context-option" type="checkbox" value="activeEditor">当前编辑器</label>
         </div>
         <div class="plan-context-labels" id="planContextLabels"></div>
+        <div class="mcp-note" id="mcpNote">MCP 上下文会保存到当前工作区 .trae/prompt-optimizer/context.json 和 memory.md。</div>
         <div class="plan-diagnosis" id="planDiagnosis">选择 AI 优化模式为“计划模式”后，输入一个目标并点击“开始计划”。</div>
         <div class="plan-question-list" id="planQuestions"></div>
         <textarea class="plan-answer-box" id="planAnswer" placeholder="也可以在这里整体粘贴回答、补充约束、贴背景。逐条问题的回答会和这里的内容一起发送。"></textarea>
@@ -2119,6 +2244,7 @@ function getWebviewHtml(webview, initialPrompt) {
     const planQuestions = document.getElementById('planQuestions');
     const planAnswer = document.getElementById('planAnswer');
     const planContextLabels = document.getElementById('planContextLabels');
+    const mcpNote = document.getElementById('mcpNote');
     const toast = document.getElementById('toast');
 
     let planState = {
@@ -3012,6 +3138,22 @@ function getWebviewHtml(webview, initialPrompt) {
       notify('正在生成最终计划');
     }
 
+    function postExportMcpContext() {
+      const selection = contextSelection();
+      const btn = document.getElementById('mcpExportBtn');
+      btn.disabled = true;
+      btn.textContent = '导出中...';
+      vscode.postMessage({
+        type: 'exportMcpContext',
+        value: optimizedPrompt.value,
+        raw: rawPrompt.value,
+        options: requestOptions(),
+        contextSelection: selection,
+        planState
+      });
+      notify('正在导出 MCP 上下文');
+    }
+
     function resetPlanState() {
       planState = {
         session: null,
@@ -3044,6 +3186,7 @@ function getWebviewHtml(webview, initialPrompt) {
             : 'AI 预设已切换';
       setStatus(special);
       notify('已切换 AI 预设');
+      vscode.postMessage({ type: 'getApiKeyStatus', options: aiOptions() });
     }
 
     function setModels(models) {
@@ -3102,7 +3245,7 @@ function getWebviewHtml(webview, initialPrompt) {
       const btn = document.getElementById('saveApiKeyBtn');
       btn.disabled = true;
       btn.textContent = '保存中...';
-      vscode.postMessage({ type: 'saveApiKey', apiKey: apiKeyInput.value.trim() });
+      vscode.postMessage({ type: 'saveApiKey', apiKey: apiKeyInput.value.trim(), options: aiOptions() });
     }
 
     document.getElementById('copyBtn').addEventListener('click', () => post('copy'));
@@ -3114,6 +3257,7 @@ function getWebviewHtml(webview, initialPrompt) {
     document.getElementById('planStartBtn').addEventListener('click', postPlanStart);
     document.getElementById('planAnswerBtn').addEventListener('click', postPlanAnswer);
     document.getElementById('planFinalizeBtn').addEventListener('click', postPlanFinalize);
+    document.getElementById('mcpExportBtn').addEventListener('click', postExportMcpContext);
     document.getElementById('planResetBtn').addEventListener('click', resetPlanState);
     document.getElementById('insertBtn').addEventListener('click', () => post('insert'));
     document.getElementById('exportBtn').addEventListener('click', () => post('exportMarkdown'));
@@ -3239,6 +3383,23 @@ function getWebviewHtml(webview, initialPrompt) {
         setPlanBusy(false);
         setStatus('计划模式失败：' + (message.value || '请检查 Key、Base URL 和模型'));
         notify('计划模式失败');
+      }
+
+      if (message.type === 'mcpContextExported') {
+        const btn = document.getElementById('mcpExportBtn');
+        btn.disabled = false;
+        btn.textContent = '导出 MCP 上下文';
+        const value = message.value || {};
+        mcpNote.textContent = '已导出：' + (value.contextPath || '.trae/prompt-optimizer/context.json');
+        notify('MCP 上下文已导出');
+      }
+
+      if (message.type === 'mcpContextError') {
+        const btn = document.getElementById('mcpExportBtn');
+        btn.disabled = false;
+        btn.textContent = '导出 MCP 上下文';
+        mcpNote.textContent = '导出失败：' + (message.value || '请打开工作区后重试');
+        notify('MCP 导出失败');
       }
 
       if (message.type === 'aiError') {

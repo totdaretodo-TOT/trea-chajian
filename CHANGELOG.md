@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.0
+
+- Add a local MCP context bridge with `mcp-server.js`.
+- Add `导出 MCP 上下文` in Plan Mode to write `.trae/prompt-optimizer/context.json` and append `.trae/prompt-optimizer/memory.md`.
+- Expose MCP tools for reading the latest context snapshot, memory, exported context files, and safe workspace files.
+- Include the MCP server in VSIX packaging and document MCP client configuration.
+- Fix provider-specific API key status/storage so each provider can keep its own saved key.
+- Write a `.gitignore` beside exported MCP context to avoid committing snapshots by accident.
+
 ## 0.11.2
 
 - Improve OpenAI-compatible API diagnostics for non-JSON responses and network failures.

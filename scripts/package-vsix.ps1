@@ -23,6 +23,7 @@ New-Item -ItemType Directory -Force -Path $extensionDir | Out-Null
 
 Copy-Item -LiteralPath (Join-Path $root "package.json") -Destination (Join-Path $extensionDir "package.json")
 Copy-Item -LiteralPath (Join-Path $root "extension.js") -Destination (Join-Path $extensionDir "extension.js")
+Copy-Item -LiteralPath (Join-Path $root "mcp-server.js") -Destination (Join-Path $extensionDir "mcp-server.js")
 Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination (Join-Path $extensionDir "README.md")
 Copy-Item -LiteralPath (Join-Path $root "CHANGELOG.md") -Destination (Join-Path $extensionDir "CHANGELOG.md")
 

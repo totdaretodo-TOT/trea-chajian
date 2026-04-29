@@ -16,6 +16,7 @@
 - 支持在面板中切换 `计划模式`、`提问式落地` 和 `直接执行 Prompt` 三种 AI 优化模式。
 - 计划模式支持每轮 5-8 个关键问题、卡片式回答、标记不确定/跳过、整体粘贴回答、最终生成可评审计划。
 - 计划模式可选读取轻量工作区上下文，可分别勾选目录结构、README、package.json、当前编辑器，并排除 `.env*`、`.git`、`node_modules`、`dist`、secret/token/key 类文件。
+- 支持导出 MCP 上下文快照到 `.trae/prompt-optimizer/context.json`，并内置无依赖 MCP Server 读取该快照。
 - AI 配置、任务设置、诊断详情和历史记录都支持折叠，默认界面更清爽。
 - 优化结果顶部的评分说明和关注标签分行展示，避免窄屏下中文被挤成竖排。
 - 内置 OpenAI、NVIDIA、DeepSeek、Gemini、Kimi、Groq、OpenRouter、豆包/火山方舟和豆包 Coding Plan 预设，可一键填入 Base URL 并获取模型列表。
@@ -30,7 +31,7 @@
    npm run package
    ```
 
-2. 得到 `dist/trae-prompt-optimizer-0.11.2.vsix`。
+2. 得到 `dist/trae-prompt-optimizer-0.12.0.vsix`。
 3. 打开 Trae 的扩展商店。
 4. 把 `.vsix` 文件拖入扩展商店安装。
 5. 安装后打开命令面板，运行 `Trae Prompt Optimizer: Open`。
@@ -93,6 +94,46 @@
 - 给用户继续补充答案的简短模板。
 
 API Key 会保存在 VS Code/Trae SecretStorage。命令 `Trae Prompt Optimizer: Set AI API Key` 仍保留为备用入口，但日常不需要使用命令行或命令面板配置。
+
+## MCP 上下文桥
+
+插件不能直接读取 Trae 内置 Chat 的私有历史，但可以把当前工作区上下文导出成 MCP 可读快照：
+
+1. 在 `计划模式` 面板勾选需要的上下文：目录结构、README、package.json、当前编辑器。
+2. 点击 `导出 MCP 上下文`。
+3. 插件会写入：
+
+   ```text
+   .trae/prompt-optimizer/context.json
+   .trae/prompt-optimizer/memory.md
+   ```
+
+   插件也会在该目录写入 `.gitignore`，默认避免把上下文快照和记忆文件提交进业务仓库。
+
+4. 在支持 MCP 的客户端里配置本项目自带的 server：
+
+   ```json
+   {
+     "mcpServers": {
+       "trae-prompt-optimizer": {
+         "command": "node",
+         "args": [
+           "E:/git storeplace/tot/tot/trae-prompt-optimizer-extension/mcp-server.js",
+           "你的工作区绝对路径"
+         ]
+       }
+     }
+   }
+   ```
+
+MCP Server 暴露的工具：
+
+- `get_prompt_optimizer_context`：读取最新 `context.json`。
+- `get_prompt_optimizer_memory`：读取累计的 `memory.md`。
+- `list_prompt_optimizer_context_files`：列出 `.trae/prompt-optimizer` 目录中的上下文文件。
+- `read_workspace_file`：安全读取工作区内非敏感文件。
+
+安全规则：MCP Server 会拒绝读取工作区外路径，并屏蔽 `.env*`、`.git`、`node_modules`、`dist`、secret/token/key/password/private-key 等敏感路径。
 
 ### API Provider 配置
 
